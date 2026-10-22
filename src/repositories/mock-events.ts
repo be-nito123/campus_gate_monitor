@@ -1,7 +1,88 @@
 import type { GateEvent } from '@/types/domain'
 import { createId, nowIso } from '@/utils/id'
 
-export const DEMO_EVENTS: GateEvent[] = []
+const now = new Date()
+const hoursAgo = (h: number) => new Date(now.getTime() - h * 3600000).toISOString()
+const daysAgo = (d: number) => new Date(now.getTime() - d * 86400000).toISOString()
+
+export const DEMO_EVENTS: GateEvent[] = [
+  {
+    id: 'evt-seed-01',
+    busId: 'bus-001',
+    eventType: 'EXIT',
+    eventTime: hoursAgo(9),
+    source: 'CAMERA',
+    rawOcrText: 'MH12AB1234',
+    normalizedOcrText: 'MH12AB1234',
+    confidence: 0.98,
+    cameraId: 'cam-main-out',
+    evidenceReference: null,
+    reviewStatus: 'CONFIRMED',
+    notes: 'Morning shift departure',
+    createdAt: hoursAgo(9),
+  },
+  {
+    id: 'evt-seed-02',
+    busId: 'bus-001',
+    eventType: 'ENTRY',
+    eventTime: hoursAgo(4),
+    source: 'CAMERA',
+    rawOcrText: 'MH12AB1234',
+    normalizedOcrText: 'MH12AB1234',
+    confidence: 0.96,
+    cameraId: 'cam-main-in',
+    evidenceReference: null,
+    reviewStatus: 'CONFIRMED',
+    notes: 'Midday return',
+    createdAt: hoursAgo(4),
+  },
+  {
+    id: 'evt-seed-03',
+    busId: 'bus-002',
+    eventType: 'EXIT',
+    eventTime: hoursAgo(7),
+    source: 'CAMERA',
+    rawOcrText: 'KA05CD5678',
+    normalizedOcrText: 'KA05CD5678',
+    confidence: 0.94,
+    cameraId: 'cam-main-out',
+    evidenceReference: null,
+    reviewStatus: 'CONFIRMED',
+    notes: 'Route B inter-campus transfer',
+    createdAt: hoursAgo(7),
+  },
+  {
+    id: 'evt-seed-04',
+    busId: 'bus-001',
+    eventType: 'EXIT',
+    eventTime: daysAgo(1),
+    source: 'CAMERA',
+    rawOcrText: 'MH12AB1234',
+    normalizedOcrText: 'MH12AB1234',
+    confidence: 0.97,
+    cameraId: 'cam-main-out',
+    evidenceReference: null,
+    reviewStatus: 'CONFIRMED',
+    notes: 'Yesterday afternoon trip',
+    createdAt: daysAgo(1),
+  },
+  {
+    id: 'evt-seed-05',
+    busId: 'bus-001',
+    eventType: 'ENTRY',
+    eventTime: new Date(new Date(daysAgo(1)).getTime() + 7200000).toISOString(),
+    source: 'CAMERA',
+    rawOcrText: 'MH12AB1234',
+    normalizedOcrText: 'MH12AB1234',
+    confidence: 0.95,
+    cameraId: 'cam-main-in',
+    evidenceReference: null,
+    reviewStatus: 'CONFIRMED',
+    notes: 'Yesterday return',
+    createdAt: daysAgo(1),
+  },
+]
+
 const STORAGE_KEY = 'gatevision_events_v1'
 
 export class GateEventRepository {
