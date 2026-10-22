@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input, Textarea } from '@/components/ui/input'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
-import { formatDateTime } from '@/utils/format'
+import { formatDateTime, formatConfidence } from '@/utils/format'
 import { describeRegistrationIssue, formatRegistrationNumber } from '@/utils/registration'
 import {
   Plus,
@@ -579,7 +579,7 @@ const BusRegistry = () => {
                         </Badge>
                       </TableCell>
                       <TableCell className="font-mono text-xs">
-                        {ev.confidence !== null ? `${(ev.confidence * 100).toFixed(1)}%` : '—'}
+                        {formatConfidence(ev.confidence)}
                       </TableCell>
                       <TableCell>
                         <Badge

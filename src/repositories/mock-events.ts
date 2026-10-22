@@ -49,6 +49,13 @@ export class GateEventRepository {
     return this.events[idx]
   }
 
+  async remove(id: string): Promise<boolean> {
+    const idx = this.events.findIndex((e) => e.id === id)
+    if (idx < 0) return false
+    this.events.splice(idx, 1)
+    return true
+  }
+
   async _seed(event: GateEvent) {
     this.events.push(event)
   }

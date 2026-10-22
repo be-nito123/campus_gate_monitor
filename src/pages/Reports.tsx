@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
-import { formatDateTime, formatDuration } from '@/utils/format'
+import { formatDateTime, formatDuration, formatConfidence } from '@/utils/format'
 import { exportRowsToCsv } from '@/utils/csv'
 import { Download, RefreshCw, BarChart3, PieChart as PieIcon, Clock, Filter, Calendar } from 'lucide-react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend, PieChart, Pie, Cell } from 'recharts'
@@ -170,7 +170,7 @@ const Reports = () => {
         RouteName: bus?.routeName || 'N/A',
         EventType: ev.eventType,
         Source: ev.source,
-        Confidence: ev.confidence !== null ? `${(ev.confidence * 100).toFixed(1)}%` : 'N/A',
+        Confidence: formatConfidence(ev.confidence),
         CameraId: ev.cameraId || 'N/A',
         ReviewStatus: ev.reviewStatus,
       }

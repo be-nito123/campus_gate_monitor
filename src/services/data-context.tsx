@@ -15,6 +15,7 @@ interface AppData {
   deactivateBus: (id: string) => Promise<boolean>
   processDetection: (d: RawDetection) => Promise<ProcessingResult>
   updateEvent: (id: string, updates: Partial<GateEvent>) => Promise<GateEvent | null>
+  deleteEvent: (id: string) => Promise<boolean>
   listCameras: () => Promise<Camera[]>
   registerCamera: (camera: Partial<Camera>) => Promise<Camera>
   updateCamera: (camera: Partial<Camera>) => Promise<Camera>
@@ -40,6 +41,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     deactivateBus: (id) => busRepo.deactivate(id),
     processDetection: (d) => processor.processGateDetection(d),
     updateEvent: (id, updates) => eventRepo.update(id, updates),
+    deleteEvent: (id) => eventRepo.remove(id),
     listCameras: () => cameraRepo.listAll(),
     registerCamera: (cam) => cameraRepo.upsert(cam),
     updateCamera: (cam) => cameraRepo.upsert(cam),

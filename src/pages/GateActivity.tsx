@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input, Textarea } from '@/components/ui/input'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
-import { formatDateTime, formatRelativeTime } from '@/utils/format'
+import { formatDateTime, formatRelativeTime, formatConfidence } from '@/utils/format'
 import { formatRegistrationNumber } from '@/utils/registration'
 import { exportRowsToCsv } from '@/utils/csv'
 import {
@@ -23,6 +23,7 @@ import {
   Download,
   Plus,
   Edit,
+  Trash2,
   ArrowUpRight,
   ArrowDownLeft,
   RefreshCw,
@@ -30,10 +31,10 @@ import {
   ChevronRight,
   Filter,
 } from 'lucide-react'
-import { toast, Toaster } from 'sonner'
+import { toast } from 'sonner'
 
 const GateActivity = () => {
-  const { listBuses, listEvents, processDetection, updateEvent } = useAppData()
+  const { listBuses, listEvents, processDetection, updateEvent, deleteEvent } = useAppData()
   const [buses, setBuses] = useState<Bus[]>([])
   const [events, setEvents] = useState<GateEvent[]>([])
   const [loading, setLoading] = useState(true)
@@ -192,6 +193,24 @@ const GateActivity = () => {
     }
   }
 
+  const handleDeleteEvent = async (ev: GateEvent) => {
+    if (!confirm(`Are you sure you want to delete event ${ev.id}?`)) return
+    try {
+      const success = await deleteEvent(ev.id)
+      if (success) {
+        toast.success('Event successfully deleted')
+        if (correctEvent?.id === ev.id) {
+          setCorrectEvent(null)
+        }
+        loadData()
+      } else {
+        toast.error('Failed to delete event')
+      }
+    } catch {
+      toast.error('Failed to delete event')
+    }
+  }
+
   const handleCsvExport = () => {
     const rows = filteredEvents.map((ev) => {
       const bus = ev.busId ? busMap.get(ev.busId) : null
@@ -203,76 +222,82 @@ const GateActivity = () => {
         RouteName: bus?.routeName || 'N/A',
         EventType: ev.eventType,
         Source: ev.source,
-        Confidence: ev.confidence !== null ? `${(ev.confidence * 100).toFixed(1)}%` : 'N/A',
+        Confidence: ev.confidence !== null && ev.confidence !== undefined ? `${(ev.confidence * 100).toFixed(1)}%` : 'N/A',
         CameraId: ev.cameraId || 'N/A',
         ReviewStatus: ev.reviewStatus,
         Notes: ev.notes || '',
       }
     })
-    exportRowsToCsv(`gate-activity-${new Date().toISOString().slice(0, 10)}.csv`, rows)
-    toast.success(`Exported ${rows.length} gate activity records to CSV`)
+    exportRowsToCsv('gate-movements-export.csv', rows)
+    toast.success(`Exported ${rows.length} movement records to CSV`)
+  }
+
+  const resetFilters = () => {
+    setSearchTerm('')
+    setEventTypeFilter('ALL')
+    setSourceFilter('ALL')
+    setReviewStatusFilter('ALL')
+    setFromDate('')
+    setToDate('')
+    setCurrentPage(1)
   }
 
   return (
     <div className="space-y-6">
-      <Toaster position="top-right" theme="dark" />
-
-      {/* Header */}
+      {/* Top Banner */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">Gate Activity & Telemetry Logs</h2>
+          <h2 className="text-xl font-bold tracking-tight text-foreground">Gate Activity & Event History</h2>
           <p className="text-xs text-muted-foreground">
-            Searchable movement history, OCR detection telemetry, CSV exports, and manual override corrections.
+            Search, audit, export, and manually record campus gate entry/exit movements.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => loadData(true)} loading={refreshing}>
-            <RefreshCw className="size-3.5" />
-            Refresh
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => loadData(true)}
+            loading={refreshing}
+            className="gap-1.5"
+          >
+            <RefreshCw className="size-3.5" /> Refresh
           </Button>
-          <Button variant="outline" size="sm" onClick={handleCsvExport}>
-            <Download className="size-3.5" />
-            Export CSV
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCsvExport}
+            disabled={filteredEvents.length === 0}
+            className="gap-1.5"
+          >
+            <Download className="size-3.5" /> Export CSV
           </Button>
-          <Button size="sm" onClick={() => setManualOpen(true)}>
-            <Plus className="size-3.5" />
-            Manual Entry
+          <Button size="sm" onClick={() => setManualOpen(true)} className="gap-1.5">
+            <Plus className="size-3.5" /> Manual Event
           </Button>
         </div>
       </div>
 
-      {/* Filter and Search Card */}
-      <Card className="bg-card border-border">
+      {/* Filters Card */}
+      <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <Filter className="size-4 text-primary" /> Advanced Filters & Search
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Filter className="size-4 text-primary" /> Filter Gate Events
           </CardTitle>
-          <CardDescription className="text-xs text-muted-foreground">
-            Filter movement history by date range, vehicle registration, event source, and review status
-          </CardDescription>
+          <CardDescription>Refine movement logs by registration plate, event type, source, and date range.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4 pt-0">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-            <div className="relative md:col-span-2">
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="relative col-span-1 sm:col-span-2">
               <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
               <Input
-                placeholder="Search plate, bus name, camera ID, or notes…"
-                className="pl-9"
+                placeholder="Search plate, bus name, camera ID, notes…"
                 value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value)
-                  setCurrentPage(1)
-                }}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
               />
             </div>
             <div>
-              <Select
-                value={eventTypeFilter}
-                onValueChange={(v) => {
-                  setEventTypeFilter(v)
-                  setCurrentPage(1)
-                }}
-              >
+              <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
                 <SelectTrigger>
                   <SelectValue placeholder="Event Type" />
                 </SelectTrigger>
@@ -284,108 +309,73 @@ const GateActivity = () => {
               </Select>
             </div>
             <div>
-              <Select
-                value={sourceFilter}
-                onValueChange={(v) => {
-                  setSourceFilter(v)
-                  setCurrentPage(1)
-                }}
-              >
+              <Select value={sourceFilter} onValueChange={setSourceFilter}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Source" />
+                  <SelectValue placeholder="Detection Source" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">All Sources</SelectItem>
-                  <SelectItem value="CAMERA">Camera (OCR)</SelectItem>
-                  <SelectItem value="MANUAL">Manual Override</SelectItem>
-                  <SelectItem value="DEMO">Demo Simulator</SelectItem>
+                  <SelectItem value="CAMERA">CAMERA</SelectItem>
+                  <SelectItem value="MANUAL">MANUAL</SelectItem>
+                  <SelectItem value="DEMO">DEMO</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-4 items-center">
             <div>
-              <Select
-                value={reviewStatusFilter}
-                onValueChange={(v) => {
-                  setReviewStatusFilter(v)
-                  setCurrentPage(1)
-                }}
-              >
+              <Select value={reviewStatusFilter} onValueChange={setReviewStatusFilter}>
                 <SelectTrigger>
                   <SelectValue placeholder="Review Status" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">All Review Statuses</SelectItem>
-                  <SelectItem value="CONFIRMED">Confirmed</SelectItem>
-                  <SelectItem value="PENDING">Pending Review</SelectItem>
-                  <SelectItem value="REJECTED">Rejected</SelectItem>
+                  <SelectItem value="CONFIRMED">CONFIRMED</SelectItem>
+                  <SelectItem value="PENDING">PENDING</SelectItem>
+                  <SelectItem value="REJECTED">REJECTED</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground whitespace-nowrap">From:</span>
-              <Input
-                type="date"
-                value={fromDate}
-                onChange={(e) => {
-                  setFromDate(e.target.value)
-                  setCurrentPage(1)
-                }}
-              />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">From:</span>
+                <Input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="h-8 w-36 text-xs"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">To:</span>
+                <Input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="h-8 w-36 text-xs"
+                />
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground whitespace-nowrap">To:</span>
-              <Input
-                type="date"
-                value={toDate}
-                onChange={(e) => {
-                  setToDate(e.target.value)
-                  setCurrentPage(1)
-                }}
-              />
-            </div>
-            <div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full text-xs"
-                onClick={() => {
-                  setSearchTerm('')
-                  setEventTypeFilter('ALL')
-                  setSourceFilter('ALL')
-                  setReviewStatusFilter('ALL')
-                  setFromDate('')
-                  setToDate('')
-                  setCurrentPage(1)
-                }}
-              >
+            {(searchTerm || eventTypeFilter !== 'ALL' || sourceFilter !== 'ALL' || reviewStatusFilter !== 'ALL' || fromDate || toDate) && (
+              <Button variant="ghost" size="sm" onClick={resetFilters} className="text-xs text-muted-foreground">
                 Reset Filters
               </Button>
-            </div>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Activity Table */}
-      <Card className="bg-card border-border">
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
-          <div>
-            <CardTitle className="text-sm font-semibold text-foreground">Gate Activity Log</CardTitle>
-            <CardDescription className="text-xs text-muted-foreground">
-              Showing {filteredEvents.length} recorded events matching filters
-            </CardDescription>
-          </div>
-        </CardHeader>
+      {/* Events Table Card */}
+      <Card>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Timestamp</TableHead>
-                <TableHead>Reg No / Plate</TableHead>
+                <TableHead>Registration / Plate</TableHead>
                 <TableHead>Bus & Route</TableHead>
-                <TableHead>Event</TableHead>
+                <TableHead>Movement</TableHead>
                 <TableHead>Source & Camera</TableHead>
                 <TableHead>Confidence</TableHead>
                 <TableHead>Review Status</TableHead>
@@ -395,25 +385,24 @@ const GateActivity = () => {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                    Loading gate activity…
+                  <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                    Loading gate movement history…
                   </TableCell>
                 </TableRow>
               ) : paginatedEvents.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                    No gate events found matching your filter criteria.
+                  <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                    No gate events found matching the current filters.
                   </TableCell>
                 </TableRow>
               ) : (
                 paginatedEvents.map((ev) => {
                   const bus = ev.busId ? busMap.get(ev.busId) : null
-                  const regDisplay =
-                    bus?.registrationNumber ||
-                    ev.normalizedOcrText ||
-                    ev.rawOcrText ||
-                    'Unknown Plate'
-                  const busName = bus?.displayName || bus?.routeName || 'Unregistered Vehicle'
+                  const regDisplay = bus?.registrationNumber
+                    ? formatRegistrationNumber(bus.registrationNumber)
+                    : ev.normalizedOcrText
+                    ? formatRegistrationNumber(ev.normalizedOcrText)
+                    : ev.rawOcrText || 'UNKNOWN'
 
                   return (
                     <TableRow key={ev.id}>
@@ -422,11 +411,11 @@ const GateActivity = () => {
                         <div className="text-[10px] opacity-75">{formatRelativeTime(ev.eventTime)}</div>
                       </TableCell>
                       <TableCell className="font-mono font-semibold text-foreground">
-                        {formatRegistrationNumber(regDisplay)}
+                        {regDisplay}
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium text-foreground">{busName}</div>
-                        {bus?.routeName && <div className="text-[11px] text-muted-foreground">{bus.routeName}</div>}
+                        <div className="font-medium text-foreground">{bus ? bus.displayName || bus.busCode : 'Unregistered Vehicle'}</div>
+                        <div className="text-[11px] text-muted-foreground">{bus?.routeName || 'N/A'}</div>
                       </TableCell>
                       <TableCell>
                         {ev.eventType === 'ENTRY' ? (
@@ -446,7 +435,7 @@ const GateActivity = () => {
                         {ev.cameraId && <div className="text-[10px] text-muted-foreground mt-0.5">{ev.cameraId}</div>}
                       </TableCell>
                       <TableCell className="font-mono text-xs">
-                        {ev.confidence !== null ? `${(ev.confidence * 100).toFixed(1)}%` : '—'}
+                        {formatConfidence(ev.confidence)}
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -464,14 +453,25 @@ const GateActivity = () => {
                         {ev.notes && <div className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">{ev.notes}</div>}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="Correct / Review Event"
-                          onClick={() => openCorrectionModal(ev)}
-                        >
-                          <Edit className="size-3.5" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="Correct / Review Event"
+                            onClick={() => openCorrectionModal(ev)}
+                          >
+                            <Edit className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="Delete Event"
+                            onClick={() => handleDeleteEvent(ev)}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   )
@@ -575,63 +575,69 @@ const GateActivity = () => {
             <DialogDescription>
               Update review status and correction notes for event{' '}
               <span className="font-mono font-bold text-foreground">
-                {correctEvent?.id}
+                {correctEvent?.id || '—'}
               </span>
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleCorrectionSubmit} className="space-y-4 py-2">
-            <div className="rounded-md border border-border bg-[#0d1219] p-3 space-y-2 text-xs text-muted-foreground">
-              <div className="flex justify-between">
-                <span>OCR Text:</span>
-                <span className="font-mono font-semibold text-foreground">{correctEvent?.rawOcrText || 'N/A'}</span>
+          {correctEvent ? (
+            <form onSubmit={handleCorrectionSubmit} className="space-y-4 py-2">
+              <div className="rounded-md border border-border bg-[#0d1219] p-3 space-y-2 text-xs text-muted-foreground">
+                <div className="flex justify-between">
+                  <span>OCR Text:</span>
+                  <span className="font-mono font-semibold text-foreground">{correctEvent.rawOcrText || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Confidence:</span>
+                  <span className="font-mono text-foreground">
+                    {formatConfidence(correctEvent.confidence)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Camera ID:</span>
+                  <span className="font-mono text-foreground">{correctEvent.cameraId || 'N/A'}</span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span>Confidence:</span>
-                <span className="font-mono text-foreground">
-                  {correctEvent?.confidence !== null ? `${(correctEvent!.confidence! * 100).toFixed(1)}%` : '—'}
-                </span>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-foreground">Review Status</label>
+                <Select
+                  value={correctStatus}
+                  onValueChange={(val) => setCorrectStatus(val as ReviewStatus)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select review status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CONFIRMED">CONFIRMED (Valid crossing)</SelectItem>
+                    <SelectItem value="PENDING">PENDING (Requires review)</SelectItem>
+                    <SelectItem value="REJECTED">REJECTED (False positive / Invalid)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="flex justify-between">
-                <span>Camera ID:</span>
-                <span className="font-mono text-foreground">{correctEvent?.cameraId || 'N/A'}</span>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-foreground">Correction Notes</label>
+                <Textarea
+                  placeholder="Notes on correction or audit reason…"
+                  value={correctNotes}
+                  onChange={(e) => setCorrectNotes(e.target.value)}
+                />
               </div>
-            </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground">Review Status</label>
-              <Select
-                value={correctStatus}
-                onValueChange={(val) => setCorrectStatus(val as ReviewStatus)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select review status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="CONFIRMED">CONFIRMED (Valid crossing)</SelectItem>
-                  <SelectItem value="PENDING">PENDING (Requires review)</SelectItem>
-                  <SelectItem value="REJECTED">REJECTED (False positive / Invalid)</SelectItem>
-                </SelectContent>
-              </Select>
+              <DialogFooter className="pt-2">
+                <Button type="button" variant="outline" onClick={() => setCorrectEvent(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit" loading={submittingCorrection}>
+                  Save Correction
+                </Button>
+              </DialogFooter>
+            </form>
+          ) : (
+            <div className="py-6 text-center text-xs text-muted-foreground">
+              No event selected for correction.
             </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground">Correction Notes</label>
-              <Textarea
-                placeholder="Notes on correction or audit reason…"
-                value={correctNotes}
-                onChange={(e) => setCorrectNotes(e.target.value)}
-              />
-            </div>
-
-            <DialogFooter className="pt-2">
-              <Button type="button" variant="outline" onClick={() => setCorrectEvent(null)}>
-                Cancel
-              </Button>
-              <Button type="submit" loading={submittingCorrection}>
-                Save Correction
-              </Button>
-            </DialogFooter>
-          </form>
+          )}
         </DialogContent>
       </Dialog>
     </div>
