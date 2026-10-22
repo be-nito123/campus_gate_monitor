@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
+import { createBrowserRouter, Navigate, Outlet, Link, useLocation } from 'react-router-dom'
 import type { RouteObject } from 'react-router-dom'
 import { AppDataProvider } from '@/services/data-context'
 import { Button } from '@/components/ui/button'
@@ -23,6 +23,7 @@ const NAV_ITEMS = [
 ]
 
 const SidebarButton: React.FC<{ label: string; to: string }> = ({ label, to }) => {
+  const location = useLocation()
   const isActive = to === '/' ? location.pathname === '/' : location.pathname.startsWith(to)
   return (
     <Button
@@ -31,9 +32,9 @@ const SidebarButton: React.FC<{ label: string; to: string }> = ({ label, to }) =
       asChild
       className="w-full justify-start text-xs font-medium"
     >
-      <a href={to} aria-current={isActive ? 'page' : undefined}>
+      <Link to={to} aria-current={isActive ? 'page' : undefined}>
         {label}
-      </a>
+      </Link>
     </Button>
   )
 }

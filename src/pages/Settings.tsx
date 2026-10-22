@@ -10,8 +10,9 @@ import { Sliders, RefreshCw, CheckCircle2, Shield } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 
 const Settings = () => {
-  const { getSettings, updateSettings } = useAppData()
+  const { getSettings, updateSettings, resetToDemo } = useAppData()
   const [saving, setSaving] = useState(false)
+  const [resetting, setResetting] = useState(false)
 
   // Settings form state
   const [campusName, setCampusName] = useState('')
@@ -68,6 +69,25 @@ const Settings = () => {
     }
   }
 
+  const handleResetDemo = async () => {
+    if (
+      !confirm(
+        'Are you sure you want to reset all buses, gate events, cameras, and settings to the baseline demo dataset? Local modifications will be reset.',
+      )
+    )
+      return
+    setResetting(true)
+    try {
+      await resetToDemo()
+      await loadSettings()
+      toast.success('Successfully reset all records to the baseline demo dataset')
+    } catch {
+      toast.error('Failed to reset demo dataset')
+    } finally {
+      setResetting(false)
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <Toaster position="top-right" theme="dark" />
@@ -81,6 +101,9 @@ const Settings = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleResetDemo} loading={resetting} className="text-destructive hover:bg-destructive/10">
+            Reset to Demo Seeds
+          </Button>
           <Button variant="outline" size="sm" onClick={loadSettings}>
             <RefreshCw className="size-3.5" />
             Reload

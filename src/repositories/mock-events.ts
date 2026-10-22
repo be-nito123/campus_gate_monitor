@@ -1,5 +1,7 @@
 import type { GateEvent } from '@/types/domain'
 import { createId, nowIso } from '@/utils/id'
+import { StorageService, defaultStorage } from '@/services/storage/storage-service'
+import { isGateEvent } from '@/services/storage/validation'
 
 const now = new Date()
 const hoursAgo = (h: number) => new Date(now.getTime() - h * 3600000).toISOString()
@@ -83,60 +85,52 @@ export const DEMO_EVENTS: GateEvent[] = [
   },
 ]
 
-const STORAGE_KEY = 'gatevision_events_v1'
+export const EVENTS_STORAGE_KEY = 'gatevision_events_v2'
 
 export class GateEventRepository {
   private events: GateEvent[]
+  private storage: StorageService
 
-  constructor(initial: GateEvent[] = DEMO_EVENTS) {
-    this.events = this.loadFromStorage(initial)
+  constructor(initial: GateEvent[] = DEMO_EVENTS, storage?: StorageService) {
+    const isTest = Boolean((globalThis as { VITEST?: boolean }).VITEST)
+    this.storage = storage ?? (isTest ? new StorageService() : defaultStorage)
+    if (isTest && initial !== DEMO_EVENTS) {
+      this.events = initial.map((e) => ({ ...e }))
+      this.persist()
+    } else {
+      this.events = this.storage.loadArray(EVENTS_STORAGE_KEY, initial, isGateEvent)
+    }
   }
 
-  private loadFromStorage(initial: GateEvent[]): GateEvent[] {
-    try {
-      if ((globalThis as { VITEST?: boolean }).VITEST) {
-        return [...initial]
-      }
-      if (typeof window !== 'undefined' && window.localStorage) {
-        const stored = window.localStorage.getItem(STORAGE_KEY)
-        if (stored) {
-          return JSON.parse(stored)
-        }
-      }
-    } catch {
-      // fallback
-    }
-    return [...initial]
-  }
-
-  private saveToStorage(): void {
-    try {
-      if ((globalThis as { VITEST?: boolean }).VITEST) return
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.events))
-      }
-    } catch {
-      // fallback
-    }
+  private persist(): void {
+    this.storage.save(EVENTS_STORAGE_KEY, this.events)
   }
 
   async listAll(): Promise<GateEvent[]> {
-    return [...this.events].sort((a, b) => (b.createdAt >= a.createdAt ? 1 : -1))
+    return [...this.events]
+      .sort((a, b) => new Date(b.eventTime || b.createdAt).getTime() - new Date(a.eventTime || a.createdAt).getTime())
+      .map((e) => ({ ...e }))
+  }
+
+  async getById(id: string): Promise<GateEvent | null> {
+    const found = this.events.find((e) => e.id === id)
+    return found ? { ...found } : null
   }
 
   async getLastForBus(busId: string): Promise<GateEvent | null> {
-    const events = this.events
-      .filter((e) => e.busId === busId)
-      .sort((a, b) => (b.createdAt >= a.createdAt ? 1 : -1))
-    return events[0] ?? null
+    const busEvents = this.events
+      .filter((e) => e.busId === busId && e.reviewStatus === 'CONFIRMED')
+      .sort((a, b) => new Date(b.eventTime || b.createdAt).getTime() - new Date(a.eventTime || a.createdAt).getTime())
+    return busEvents[0] ? { ...busEvents[0] } : null
   }
 
   async create(event: Partial<GateEvent>): Promise<GateEvent> {
+    const now = nowIso()
     const newEvent: GateEvent = {
       id: event.id ?? createId('evt'),
       busId: event.busId ?? null,
       eventType: event.eventType ?? 'ENTRY',
-      eventTime: event.eventTime ?? nowIso(),
+      eventTime: event.eventTime ?? now,
       source: event.source ?? 'DEMO',
       rawOcrText: event.rawOcrText ?? null,
       normalizedOcrText: event.normalizedOcrText ?? null,
@@ -145,31 +139,42 @@ export class GateEventRepository {
       evidenceReference: event.evidenceReference ?? null,
       reviewStatus: event.reviewStatus ?? 'PENDING',
       notes: event.notes ?? null,
-      createdAt: nowIso(),
+      createdAt: event.createdAt ?? now,
     }
     this.events.push(newEvent)
-    this.saveToStorage()
-    return newEvent
+    this.persist()
+    return { ...newEvent }
   }
 
   async update(id: string, updates: Partial<GateEvent>): Promise<GateEvent | null> {
     const idx = this.events.findIndex((e) => e.id === id)
     if (idx < 0) return null
-    this.events[idx] = { ...this.events[idx], ...updates }
-    this.saveToStorage()
-    return this.events[idx]
+    const updated: GateEvent = {
+      ...this.events[idx],
+      ...updates,
+    }
+    this.events[idx] = updated
+    this.persist()
+    return { ...updated }
   }
 
   async remove(id: string): Promise<boolean> {
     const idx = this.events.findIndex((e) => e.id === id)
     if (idx < 0) return false
     this.events.splice(idx, 1)
-    this.saveToStorage()
+    this.persist()
     return true
   }
 
-  async _seed(event: GateEvent) {
-    this.events.push(event)
-    this.saveToStorage()
+  /** Reset store to original demo seed */
+  async reset(initial: GateEvent[] = DEMO_EVENTS): Promise<void> {
+    this.events = initial.map((e) => ({ ...e }))
+    this.persist()
+  }
+
+  /** Seed an event directly */
+  async _seed(event: GateEvent): Promise<void> {
+    this.events.push({ ...event })
+    this.persist()
   }
 }

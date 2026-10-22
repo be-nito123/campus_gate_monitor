@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useAppData } from '@/services/data-context'
 import type { Camera, CameraConnectionStatus, CameraProcessingStatus, DirectionConfiguration } from '@/types/domain'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -20,9 +20,7 @@ import { Plus, Edit, Trash2, Video, Radio, RefreshCw } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 
 const Cameras = () => {
-  const { listCameras, registerCamera, updateCamera, deleteCamera } = useAppData()
-  const [cameras, setCameras] = useState<Camera[]>([])
-  const [loading, setLoading] = useState(true)
+  const { cameras, loading, registerCamera, updateCamera, deleteCamera, refresh } = useAppData()
   const [refreshing, setRefreshing] = useState(false)
 
   // Modal state
@@ -39,23 +37,14 @@ const Cameras = () => {
   const [formProcessing, setFormProcessing] = useState<CameraProcessingStatus>('PROCESSING')
   const [submitting, setSubmitting] = useState(false)
 
-  const loadData = async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true)
-    else setLoading(true)
+  const handleRefresh = async () => {
+    setRefreshing(true)
     try {
-      const c = await listCameras()
-      setCameras(c)
-    } catch {
-      toast.error('Failed to load camera management dashboard')
+      await refresh()
     } finally {
-      setLoading(false)
       setRefreshing(false)
     }
   }
-
-  useEffect(() => {
-    loadData()
-  }, [listCameras])
 
   const openAddModal = () => {
     setEditingCamera(null)
@@ -116,7 +105,6 @@ const Cameras = () => {
         toast.success(`Successfully registered new camera ${formName}`)
       }
       setDialogOpen(false)
-      loadData()
     } catch {
       toast.error('Failed to save camera record')
     } finally {
@@ -129,7 +117,6 @@ const Cameras = () => {
     try {
       await deleteCamera(id)
       toast.success('Camera successfully deleted')
-      loadData()
     } catch {
       toast.error('Failed to delete camera')
     }
@@ -148,7 +135,7 @@ const Cameras = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => loadData(true)} loading={refreshing}>
+          <Button variant="outline" size="sm" onClick={handleRefresh} loading={refreshing}>
             <RefreshCw className="size-3.5" />
             Refresh
           </Button>
@@ -189,7 +176,14 @@ const Cameras = () => {
                 </TableRow>
               ) : cameras.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">No cameras registered yet.</TableCell>
+                  <TableCell colSpan={7} className="h-28 text-center text-muted-foreground">
+                    <div className="py-2">
+                      <p className="font-medium text-foreground text-xs">No gate cameras registered</p>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Click 'Register Camera' to add a terminal camera feed and configure lane directions.
+                      </p>
+                    </div>
+                  </TableCell>
                 </TableRow>
               ) : (
                 cameras.map((cam) => (

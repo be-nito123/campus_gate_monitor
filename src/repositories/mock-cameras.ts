@@ -1,5 +1,7 @@
 import type { Camera } from '@/types/domain'
 import { createId, nowIso } from '@/utils/id'
+import { StorageService, defaultStorage } from '@/services/storage/storage-service'
+import { isCamera } from '@/services/storage/validation'
 
 export const DEMO_CAMERAS: Camera[] = [
   {
@@ -68,86 +70,85 @@ export const DEMO_CAMERAS: Camera[] = [
   },
 ]
 
-const STORAGE_KEY = 'gatevision_cameras_v1'
+export const CAMERAS_STORAGE_KEY = 'gatevision_cameras_v2'
 
 export class CameraRepository {
   private cameras: Camera[]
+  private storage: StorageService
 
-  constructor(initial: Camera[] = DEMO_CAMERAS) {
-    this.cameras = this.loadFromStorage(initial)
+  constructor(initial: Camera[] = DEMO_CAMERAS, storage?: StorageService) {
+    const isTest = Boolean((globalThis as { VITEST?: boolean }).VITEST)
+    this.storage = storage ?? (isTest ? new StorageService() : defaultStorage)
+    if (isTest && initial !== DEMO_CAMERAS) {
+      this.cameras = initial.map((c) => ({ ...c }))
+      this.persist()
+    } else {
+      this.cameras = this.storage.loadArray(CAMERAS_STORAGE_KEY, initial, isCamera)
+    }
   }
 
-  private loadFromStorage(initial: Camera[]): Camera[] {
-    try {
-      if ((import.meta as { env?: { VITEST?: boolean } }).env?.VITEST) {
-        return [...initial]
-      }
-      if (typeof window !== 'undefined' && window.localStorage) {
-        const stored = window.localStorage.getItem(STORAGE_KEY)
-        if (stored) {
-          return JSON.parse(stored)
-        }
-      }
-    } catch {
-      // fallback
-    }
-    return [...initial]
-  }
-
-  private saveToStorage(): void {
-    try {
-      if ((import.meta as { env?: { VITEST?: boolean } }).env?.VITEST) return
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.cameras))
-      }
-    } catch {
-      // fallback
-    }
+  private persist(): void {
+    this.storage.save(CAMERAS_STORAGE_KEY, this.cameras)
   }
 
   async listAll(): Promise<Camera[]> {
-    return [...this.cameras].sort((a, b) => a.name.localeCompare(b.name))
+    return [...this.cameras]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((c) => ({ ...c }))
   }
 
   async getById(id: string): Promise<Camera | null> {
-    return this.cameras.find((c) => c.id === id) || null
+    const found = this.cameras.find((c) => c.id === id)
+    return found ? { ...found } : null
   }
 
   async upsert(camera: Partial<Camera>): Promise<Camera> {
+    const now = nowIso()
     if (camera.id) {
       const idx = this.cameras.findIndex((c) => c.id === camera.id)
       if (idx >= 0) {
-        this.cameras[idx] = { ...this.cameras[idx], ...camera, updatedAt: nowIso() }
-        this.saveToStorage()
-        return this.cameras[idx]
+        const updated: Camera = {
+          ...this.cameras[idx],
+          ...camera,
+          updatedAt: now,
+        }
+        this.cameras[idx] = updated
+        this.persist()
+        return { ...updated }
       }
     }
     const newCamera: Camera = {
       id: camera.id ?? createId('cam'),
-      name: camera.name ?? 'New Camera',
+      name: camera.name ?? 'New Camera Feed',
       cameraCode: camera.cameraCode ?? `CAM${Math.floor(10 + Math.random() * 90)}`,
       gateName: camera.gateName ?? 'Main Gate',
       laneName: camera.laneName ?? 'Lane 1',
       enabled: camera.enabled ?? true,
       connectionStatus: camera.connectionStatus ?? 'ONLINE',
-      lastHeartbeatAt: nowIso(),
-      lastFrameAt: nowIso(),
+      lastHeartbeatAt: now,
+      lastFrameAt: now,
       processingStatus: camera.processingStatus ?? 'PROCESSING',
       directionConfiguration: camera.directionConfiguration ?? 'BIDIRECTIONAL',
       simulated: camera.simulated ?? true,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
+      createdAt: now,
+      updatedAt: now,
     }
     this.cameras.push(newCamera)
-    this.saveToStorage()
-    return newCamera
+    this.persist()
+    return { ...newCamera }
   }
 
   async remove(id: string): Promise<boolean> {
     const idx = this.cameras.findIndex((c) => c.id === id)
     if (idx < 0) return false
     this.cameras.splice(idx, 1)
-    this.saveToStorage()
+    this.persist()
     return true
+  }
+
+  /** Reset store to original demo seed */
+  async reset(initial: Camera[] = DEMO_CAMERAS): Promise<void> {
+    this.cameras = initial.map((c) => ({ ...c }))
+    this.persist()
   }
 }

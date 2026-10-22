@@ -1,4 +1,6 @@
 import type { AppSettings } from '@/types/domain'
+import { StorageService, defaultStorage } from '@/services/storage/storage-service'
+import { isAppSettings } from '@/services/storage/validation'
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   campusName: 'GateVision Main Campus',
@@ -13,41 +15,25 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   timezone: 'Asia/Kolkata',
 }
 
-const STORAGE_KEY = 'gatevision_settings_v1'
+export const SETTINGS_STORAGE_KEY = 'gatevision_settings_v2'
 
 export class SettingsRepository {
   private settings: AppSettings
+  private storage: StorageService
 
-  constructor(initial: AppSettings = DEFAULT_APP_SETTINGS) {
-    this.settings = this.loadFromStorage(initial)
+  constructor(initial: AppSettings = DEFAULT_APP_SETTINGS, storage?: StorageService) {
+    const isTest = Boolean((globalThis as { VITEST?: boolean }).VITEST)
+    this.storage = storage ?? (isTest ? new StorageService() : defaultStorage)
+    if (isTest && initial !== DEFAULT_APP_SETTINGS) {
+      this.settings = { ...initial }
+      this.persist()
+    } else {
+      this.settings = this.storage.loadObject(SETTINGS_STORAGE_KEY, initial, isAppSettings)
+    }
   }
 
-  private loadFromStorage(initial: AppSettings): AppSettings {
-    try {
-      if ((import.meta as { env?: { VITEST?: boolean } }).env?.VITEST) {
-        return { ...initial }
-      }
-      if (typeof window !== 'undefined' && window.localStorage) {
-        const stored = window.localStorage.getItem(STORAGE_KEY)
-        if (stored) {
-          return { ...initial, ...JSON.parse(stored) }
-        }
-      }
-    } catch {
-      // fallback
-    }
-    return { ...initial }
-  }
-
-  private saveToStorage(): void {
-    try {
-      if ((import.meta as { env?: { VITEST?: boolean } }).env?.VITEST) return
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.settings))
-      }
-    } catch {
-      // fallback
-    }
+  private persist(): void {
+    this.storage.save(SETTINGS_STORAGE_KEY, this.settings)
   }
 
   async get(): Promise<AppSettings> {
@@ -56,7 +42,13 @@ export class SettingsRepository {
 
   async update(updates: Partial<AppSettings>): Promise<AppSettings> {
     this.settings = { ...this.settings, ...updates }
-    this.saveToStorage()
+    this.persist()
     return { ...this.settings }
+  }
+
+  /** Reset settings to defaults */
+  async reset(initial: AppSettings = DEFAULT_APP_SETTINGS): Promise<void> {
+    this.settings = { ...initial }
+    this.persist()
   }
 }

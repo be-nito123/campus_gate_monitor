@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useAppData } from '@/services/data-context'
 import type { GateEvent, Bus, ReviewStatus } from '@/types/domain'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -21,10 +21,7 @@ import { AlertTriangle, RefreshCw, CheckCircle2, XCircle, HelpCircle } from 'luc
 import { toast, Toaster } from 'sonner'
 
 const Reviews = () => {
-  const { listBuses, listEvents, updateEvent } = useAppData()
-  const [buses, setBuses] = useState<Bus[]>([])
-  const [events, setEvents] = useState<GateEvent[]>([])
-  const [loading, setLoading] = useState(true)
+  const { buses, events, loading, resolveReview, refresh } = useAppData()
   const [refreshing, setRefreshing] = useState(false)
 
   // Review modal state
@@ -34,24 +31,14 @@ const Reviews = () => {
   const [reviewReason, setReviewReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  const loadData = async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true)
-    else setLoading(true)
+  const handleRefresh = async () => {
+    setRefreshing(true)
     try {
-      const [b, e] = await Promise.all([listBuses(), listEvents()])
-      setBuses(b)
-      setEvents(e)
-    } catch {
-      toast.error('Failed to load detection review queue')
+      await refresh()
     } finally {
-      setLoading(false)
       setRefreshing(false)
     }
   }
-
-  useEffect(() => {
-    loadData()
-  }, [listBuses, listEvents])
 
   // Bus lookup map
   const busMap = useMemo(() => {
@@ -88,16 +75,16 @@ const Reviews = () => {
         targetBusId = selectedBusId
       }
 
-      await updateEvent(selectedEvent.id, {
-        reviewStatus: status,
-        busId: targetBusId,
-        normalizedOcrText: correctedPlate.trim().toUpperCase() || selectedEvent.normalizedOcrText,
+      await resolveReview(
+        selectedEvent.id,
+        status,
+        targetBusId,
+        correctedPlate.trim().toUpperCase() || undefined,
         notes,
-      })
+      )
 
       toast.success(`Successfully updated event review status to ${status}`)
       setSelectedEvent(null)
-      loadData()
     } catch {
       toast.error('Failed to process review action')
     } finally {
@@ -118,7 +105,7 @@ const Reviews = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => loadData(true)} loading={refreshing}>
+          <Button variant="outline" size="sm" onClick={handleRefresh} loading={refreshing}>
             <RefreshCw className="size-3.5" />
             Refresh Queue
           </Button>

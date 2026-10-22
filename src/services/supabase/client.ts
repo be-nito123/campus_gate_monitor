@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || ''
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+// Support both VITE_SUPABASE_ANON_KEY and VITE_SUPABASE_PUBLISHABLE_KEY
+const supabaseAnonKey =
+  import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || ''
 
 /**
  * True only when valid Supabase environment variables are provided.
@@ -13,6 +15,12 @@ export const isSupabaseConfigured = Boolean(
     !supabaseUrl.includes('placeholder') &&
     !supabaseAnonKey.includes('placeholder'),
 )
+
+if (import.meta.env.DEV && !isSupabaseConfigured) {
+  console.warn(
+    '[Supabase] Missing or invalid configuration. Expected VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (or VITE_SUPABASE_PUBLISHABLE_KEY). Operating in demo mode.',
+  )
+}
 
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {

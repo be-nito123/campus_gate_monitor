@@ -1,6 +1,8 @@
 import type { Bus } from '@/types/domain'
 import { createId, nowIso } from '@/utils/id'
 import { normalizeRegistrationNumber, toComparisonKey } from '@/utils/registration'
+import { StorageService, defaultStorage } from '@/services/storage/storage-service'
+import { isBus } from '@/services/storage/validation'
 
 export const DEMO_BUSES: Bus[] = [
   {
@@ -13,11 +15,11 @@ export const DEMO_BUSES: Bus[] = [
     driverName: 'Rahul Sharma',
     driverContact: '+91-9876543210',
     currentStatus: 'INSIDE_CAMPUS',
-    registrationDate: nowIso(),
+    registrationDate: '2026-01-15T08:00:00.000Z',
     isActive: true,
-    notes: null,
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
+    notes: 'Primary fleet vehicle',
+    createdAt: '2026-01-15T08:00:00.000Z',
+    updatedAt: '2026-01-15T08:00:00.000Z',
   },
   {
     id: 'bus-002',
@@ -29,110 +31,134 @@ export const DEMO_BUSES: Bus[] = [
     driverName: 'Sneha Gupta',
     driverContact: '+91-9123456789',
     currentStatus: 'OUTSIDE_CAMPUS',
-    registrationDate: nowIso(),
+    registrationDate: '2026-01-20T08:00:00.000Z',
     isActive: true,
-    notes: null,
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
+    notes: 'Secondary fleet vehicle',
+    createdAt: '2026-01-20T08:00:00.000Z',
+    updatedAt: '2026-01-20T08:00:00.000Z',
+  },
+  {
+    id: 'bus-003',
+    busCode: 'B003',
+    registrationNumber: 'DL08EF9012',
+    normalizedRegistrationNumber: 'DL08EF9012',
+    displayName: 'Engineering Dept Bus',
+    routeName: 'Route C',
+    driverName: 'Amit Kumar',
+    driverContact: '+91-9988776655',
+    currentStatus: 'INSIDE_CAMPUS',
+    registrationDate: '2026-02-01T08:00:00.000Z',
+    isActive: true,
+    notes: 'Engineering campus transfer shuttle',
+    createdAt: '2026-02-01T08:00:00.000Z',
+    updatedAt: '2026-02-01T08:00:00.000Z',
   },
 ]
 
-const STORAGE_KEY = 'gatevision_buses_v1'
+export const BUSES_STORAGE_KEY = 'gatevision_buses_v2'
 
 export class BusRepository {
   private buses: Bus[]
+  private storage: StorageService
 
-  constructor(initial: Bus[] = DEMO_BUSES) {
-    this.buses = this.loadFromStorage(initial)
+  constructor(initial: Bus[] = DEMO_BUSES, storage?: StorageService) {
+    const isTest = Boolean((globalThis as { VITEST?: boolean }).VITEST)
+    this.storage = storage ?? (isTest ? new StorageService() : defaultStorage)
+    if (isTest && initial !== DEMO_BUSES) {
+      this.buses = initial.map((b) => ({ ...b }))
+      this.persist()
+    } else {
+      this.buses = this.storage.loadArray(BUSES_STORAGE_KEY, initial, isBus)
+    }
   }
 
-  private loadFromStorage(initial: Bus[]): Bus[] {
-    try {
-      if ((globalThis as { VITEST?: boolean }).VITEST) {
-        return [...initial]
-      }
-      if (typeof window !== 'undefined' && window.localStorage) {
-        const stored = window.localStorage.getItem(STORAGE_KEY)
-        if (stored) {
-          return JSON.parse(stored)
-        }
-      }
-    } catch {
-      // fallback
-    }
-    return [...initial]
-  }
-
-  private saveToStorage(): void {
-    try {
-      if ((globalThis as { VITEST?: boolean }).VITEST) return
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.buses))
-      }
-    } catch {
-      // fallback
-    }
+  private persist(): void {
+    this.storage.save(BUSES_STORAGE_KEY, this.buses)
   }
 
   async listAll(): Promise<Bus[]> {
-    return this.buses.filter((b) => b.isActive).sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''))
+    return this.buses
+      .filter((b) => b.isActive)
+      .sort((a, b) => (a.displayName || a.registrationNumber).localeCompare(b.displayName || b.registrationNumber))
+      .map((b) => ({ ...b }))
+  }
+
+  async listAllIncludingInactive(): Promise<Bus[]> {
+    return this.buses.map((b) => ({ ...b }))
   }
 
   async getById(id: string): Promise<Bus | null> {
-    return this.buses.find((b) => b.id === id) || null
+    const found = this.buses.find((b) => b.id === id)
+    return found ? { ...found } : null
   }
 
   async getByNormalized(reg: string): Promise<Bus | null> {
     const key = toComparisonKey(reg)
-    return (
-      this.buses.find(
-        (b) => b.isActive && toComparisonKey(b.normalizedRegistrationNumber) === key,
-      ) ?? null
+    const found = this.buses.find(
+      (b) => b.isActive && toComparisonKey(b.normalizedRegistrationNumber) === key,
     )
+    return found ? { ...found } : null
   }
 
   async upsert(bus: Partial<Bus>): Promise<Bus> {
+    const now = nowIso()
     if (bus.id) {
       const idx = this.buses.findIndex((b) => b.id === bus.id)
       if (idx >= 0) {
-        this.buses[idx] = { ...this.buses[idx], ...bus, updatedAt: nowIso() }
-        this.saveToStorage()
-        return this.buses[idx]
+        const updated: Bus = {
+          ...this.buses[idx],
+          ...bus,
+          updatedAt: now,
+        }
+        if (bus.registrationNumber && !bus.normalizedRegistrationNumber) {
+          updated.normalizedRegistrationNumber = normalizeRegistrationNumber(bus.registrationNumber)
+        }
+        this.buses[idx] = updated
+        this.persist()
+        return { ...updated }
       }
     }
+
+    const rawReg = bus.registrationNumber ?? bus.normalizedRegistrationNumber ?? 'UNASSIGNED'
+    const normalizedReg = bus.normalizedRegistrationNumber ?? normalizeRegistrationNumber(rawReg)
+
     const newBus: Bus = {
       id: bus.id ?? createId('bus'),
       busCode: bus.busCode ?? `B${(this.buses.length + 1).toString().padStart(3, '0')}`,
-      registrationNumber: bus.registrationNumber ?? bus.normalizedRegistrationNumber ?? 'UNASSIGNED',
-      normalizedRegistrationNumber:
-        bus.normalizedRegistrationNumber ?? normalizeRegistrationNumber(bus.registrationNumber ?? ''),
+      registrationNumber: rawReg,
+      normalizedRegistrationNumber: normalizedReg,
       displayName: bus.displayName ?? null,
-      routeName: bus.routeName ?? 'Unknown',
+      routeName: bus.routeName ?? 'Route Unassigned',
       driverName: bus.driverName ?? null,
       driverContact: bus.driverContact ?? null,
       currentStatus: bus.currentStatus ?? 'INSIDE_CAMPUS',
-      registrationDate: bus.registrationDate ?? nowIso(),
+      registrationDate: bus.registrationDate ?? now,
       isActive: bus.isActive ?? true,
       notes: bus.notes ?? null,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
+      createdAt: bus.createdAt ?? now,
+      updatedAt: now,
     }
+
     this.buses.push(newBus)
-    this.saveToStorage()
-    return newBus
+    this.persist()
+    return { ...newBus }
   }
 
   async deactivate(id: string): Promise<boolean> {
-    const bus = await this.getById(id)
-    if (!bus) return false
-    bus.isActive = false
-    bus.updatedAt = nowIso()
-    this.saveToStorage()
+    const idx = this.buses.findIndex((b) => b.id === id)
+    if (idx < 0) return false
+    this.buses[idx] = {
+      ...this.buses[idx],
+      isActive: false,
+      updatedAt: nowIso(),
+    }
+    this.persist()
     return true
   }
 
-  async _seed(bus: Bus) {
-    this.buses.push(bus)
-    this.saveToStorage()
+  /** Reset store to original demo seed */
+  async reset(initial: Bus[] = DEMO_BUSES): Promise<void> {
+    this.buses = initial.map((b) => ({ ...b }))
+    this.persist()
   }
 }

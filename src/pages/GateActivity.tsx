@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useAppData } from '@/services/data-context'
 import type { GateEvent, Bus, EventType, ReviewStatus } from '@/types/domain'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -34,10 +34,7 @@ import {
 import { toast } from 'sonner'
 
 const GateActivity = () => {
-  const { listBuses, listEvents, processDetection, updateEvent, deleteEvent } = useAppData()
-  const [buses, setBuses] = useState<Bus[]>([])
-  const [events, setEvents] = useState<GateEvent[]>([])
-  const [loading, setLoading] = useState(true)
+  const { buses, events, loading, processDetection, updateEvent, deleteEvent, refresh } = useAppData()
   const [refreshing, setRefreshing] = useState(false)
 
   // Filters state
@@ -67,24 +64,14 @@ const GateActivity = () => {
   const [correctNotes, setCorrectNotes] = useState('')
   const [submittingCorrection, setSubmittingCorrection] = useState(false)
 
-  const loadData = async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true)
-    else setLoading(true)
+  const handleRefresh = async () => {
+    setRefreshing(true)
     try {
-      const [b, e] = await Promise.all([listBuses(), listEvents()])
-      setBuses(b)
-      setEvents(e)
-    } catch {
-      toast.error('Failed to load gate activity logs')
+      await refresh()
     } finally {
-      setLoading(false)
       setRefreshing(false)
     }
   }
-
-  useEffect(() => {
-    loadData()
-  }, [listBuses, listEvents])
 
   // Bus lookup map
   const busMap = useMemo(() => {
@@ -160,7 +147,6 @@ const GateActivity = () => {
       setManualOpen(false)
       setManualPlate('')
       setManualNotes('')
-      loadData()
     } catch {
       toast.error('Failed to record manual event')
     } finally {
@@ -185,7 +171,6 @@ const GateActivity = () => {
       })
       toast.success('Successfully updated event review status')
       setCorrectEvent(null)
-      loadData()
     } catch {
       toast.error('Failed to update event correction')
     } finally {
@@ -202,7 +187,6 @@ const GateActivity = () => {
         if (correctEvent?.id === ev.id) {
           setCorrectEvent(null)
         }
-        loadData()
       } else {
         toast.error('Failed to delete event')
       }
@@ -256,7 +240,7 @@ const GateActivity = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => loadData(true)}
+            onClick={handleRefresh}
             loading={refreshing}
             className="gap-1.5"
           >
@@ -392,7 +376,14 @@ const GateActivity = () => {
               ) : paginatedEvents.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
-                    No gate events found matching the current filters.
+                    <div className="py-4">
+                      <p className="font-medium text-foreground text-xs">No gate events found</p>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        {searchTerm || eventTypeFilter !== 'ALL' || sourceFilter !== 'ALL' || reviewStatusFilter !== 'ALL' || fromDate || toDate
+                          ? 'No events match the selected search and filter criteria. Try resetting filters.'
+                          : 'No movement events have been logged yet. Use Live Monitoring to simulate or record a manual event.'}
+                      </p>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (

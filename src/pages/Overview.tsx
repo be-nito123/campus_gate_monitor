@@ -1,6 +1,8 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { useAppData } from '@/services/data-context'
-import type { Bus, GateEvent, EventType } from '@/types/domain'
+import { isSupabaseConfigured } from '@/services/supabase/client'
+import type { Bus, EventType } from '@/types/domain'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -34,10 +36,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGri
 import { toast, Toaster } from 'sonner'
 
 const Overview = () => {
-  const { listBuses, listEvents, registerBus, processDetection } = useAppData()
-  const [buses, setBuses] = useState<Bus[]>([])
-  const [events, setEvents] = useState<GateEvent[]>([])
-  const [loading, setLoading] = useState(true)
+  const { buses, events, cameras, settings, loading, registerBus, processDetection, refresh } = useAppData()
   const [refreshing, setRefreshing] = useState(false)
 
   // Dialog states
@@ -59,24 +58,14 @@ const Overview = () => {
   const [manualNotes, setManualNotes] = useState('')
   const [submittingEvent, setSubmittingEvent] = useState(false)
 
-  const loadData = async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true)
-    else setLoading(true)
+  const handleRefresh = async () => {
+    setRefreshing(true)
     try {
-      const [b, e] = await Promise.all([listBuses(), listEvents()])
-      setBuses(b)
-      setEvents(e)
-    } catch {
-      toast.error('Failed to load operations data')
+      await refresh()
     } finally {
-      setLoading(false)
       setRefreshing(false)
     }
   }
-
-  useEffect(() => {
-    loadData()
-  }, [listBuses, listEvents])
 
   // Computed metrics
   const totalBuses = buses.length
@@ -156,7 +145,6 @@ const Overview = () => {
       setRegDriverName('')
       setRegDriverContact('')
       setRegNotes('')
-      loadData()
     } catch {
       toast.error('Failed to register bus')
     } finally {
@@ -186,7 +174,6 @@ const Overview = () => {
       setManualOpen(false)
       setManualBusIdOrPlate('')
       setManualNotes('')
-      loadData()
     } catch {
       toast.error('Failed to record manual event')
     } finally {
@@ -210,7 +197,7 @@ const Overview = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => loadData(true)}
+            onClick={handleRefresh}
             loading={refreshing}
           >
             <RefreshCw className="size-3.5" />
@@ -391,21 +378,29 @@ const Overview = () => {
             <div className="rounded-md border border-border bg-[#0d1219] p-3 space-y-3">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Operating Mode</span>
-                <Badge variant="warning" className="font-mono text-[10px]">DEMO MODE</Badge>
+                <Badge variant={settings.operatingMode === 'DEMO' ? 'warning' : 'success'} className="font-mono text-[10px]">
+                  {settings.operatingMode} MODE
+                </Badge>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">OCR Engine</span>
                 <span className="font-medium text-success flex items-center gap-1">
-                  <CheckCircle2 className="size-3.5" /> Active (Simulated)
+                  <CheckCircle2 className="size-3.5" /> {settings.operatingMode === 'LIVE' ? 'Microservice (External)' : 'Simulated (Demo)'}
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Active Gate Cameras</span>
-                <span className="font-medium text-foreground">4 / 4 Online</span>
+                <span className="text-muted-foreground">Gate Cameras</span>
+                <span className="font-medium text-foreground">
+                  {cameras.length > 0
+                    ? `${cameras.filter((c) => c.connectionStatus === 'ONLINE' || c.connectionStatus === 'SIMULATED').length} / ${cameras.length} Active`
+                    : 'None Configured'}
+                </span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Database Sync</span>
-                <span className="font-medium text-foreground">Real-time (PostgreSQL)</span>
+                <span className="text-muted-foreground">Database Storage</span>
+                <span className="font-medium text-foreground">
+                  {isSupabaseConfigured ? 'Supabase Connected' : 'LocalStorage (Demo)'}
+                </span>
               </div>
             </div>
 
@@ -431,7 +426,7 @@ const Overview = () => {
             </CardDescription>
           </div>
           <Button variant="outline" size="sm" asChild>
-            <a href="/activity">View All Activity</a>
+            <Link to="/activity">View All Activity</Link>
           </Button>
         </CardHeader>
         <CardContent className="p-0">

@@ -1,6 +1,6 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useAppData } from '@/services/data-context'
-import type { Bus, GateEvent } from '@/types/domain'
+import type { Bus } from '@/types/domain'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
@@ -15,10 +15,7 @@ import { toast, Toaster } from 'sonner'
 const COLORS = ['#2f7bff', '#3fb950', '#f85149', '#d29922', '#8957e5']
 
 const Reports = () => {
-  const { listBuses, listEvents } = useAppData()
-  const [buses, setBuses] = useState<Bus[]>([])
-  const [events, setEvents] = useState<GateEvent[]>([])
-  const [loading, setLoading] = useState(true)
+  const { buses, events, loading, refresh } = useAppData()
   const [refreshing, setRefreshing] = useState(false)
 
   // Filters
@@ -26,24 +23,14 @@ const Reports = () => {
   const [toDate, setToDate] = useState('')
   const [eventTypeFilter, setEventTypeFilter] = useState<string>('ALL')
 
-  const loadData = async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true)
-    else setLoading(true)
+  const handleRefresh = async () => {
+    setRefreshing(true)
     try {
-      const [b, e] = await Promise.all([listBuses(), listEvents()])
-      setBuses(b)
-      setEvents(e)
-    } catch {
-      toast.error('Failed to load telemetry reports data')
+      await refresh()
     } finally {
-      setLoading(false)
       setRefreshing(false)
     }
   }
-
-  useEffect(() => {
-    loadData()
-  }, [listBuses, listEvents])
 
   // Bus lookup map
   const busMap = useMemo(() => {
@@ -192,7 +179,7 @@ const Reports = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => loadData(true)} loading={refreshing}>
+          <Button variant="outline" size="sm" onClick={handleRefresh} loading={refreshing}>
             <RefreshCw className="size-3.5" />
             Refresh
           </Button>

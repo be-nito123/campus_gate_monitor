@@ -1,6 +1,6 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useAppData } from '@/services/data-context'
-import type { Bus, GateEvent } from '@/types/domain'
+import type { Bus } from '@/types/domain'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -34,10 +34,7 @@ import {
 import { toast, Toaster } from 'sonner'
 
 const BusRegistry = () => {
-  const { listBuses, listEvents, registerBus, updateBus, deactivateBus } = useAppData()
-  const [buses, setBuses] = useState<Bus[]>([])
-  const [events, setEvents] = useState<GateEvent[]>([])
-  const [loading, setLoading] = useState(true)
+  const { buses, events, loading, registerBus, updateBus, deactivateBus, refresh } = useAppData()
   const [refreshing, setRefreshing] = useState(false)
 
   // Search and filter state
@@ -68,24 +65,14 @@ const BusRegistry = () => {
   const [formNotes, setFormNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  const loadData = async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true)
-    else setLoading(true)
+  const handleRefresh = async () => {
+    setRefreshing(true)
     try {
-      const [b, e] = await Promise.all([listBuses(), listEvents()])
-      setBuses(b)
-      setEvents(e)
-    } catch {
-      toast.error('Failed to load bus registry data')
+      await refresh()
     } finally {
-      setLoading(false)
       setRefreshing(false)
     }
   }
-
-  useEffect(() => {
-    loadData()
-  }, [listBuses, listEvents])
 
   // Unique route list for filter
   const routeOptions = useMemo(() => {
@@ -210,7 +197,6 @@ const BusRegistry = () => {
       }
 
       setRegisterOpen(false)
-      loadData()
     } catch {
       toast.error('Failed to save bus record')
     } finally {
@@ -224,7 +210,6 @@ const BusRegistry = () => {
       await deactivateBus(deactivateTarget.id)
       toast.success(`Bus ${deactivateTarget.registrationNumber} deactivated`)
       setDeactivateTarget(null)
-      loadData()
     } catch {
       toast.error('Failed to deactivate bus')
     }
@@ -243,7 +228,7 @@ const BusRegistry = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => loadData(true)} loading={refreshing}>
+          <Button variant="outline" size="sm" onClick={handleRefresh} loading={refreshing}>
             <RefreshCw className="size-3.5" />
             Refresh
           </Button>
@@ -351,8 +336,19 @@ const BusRegistry = () => {
                 </TableRow>
               ) : paginatedBuses.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                    No matching buses found in registry.
+                  <TableCell colSpan={6} className="h-28 text-center text-muted-foreground">
+                    <div className="py-2">
+                      <p className="font-medium text-foreground text-xs">
+                        {searchTerm || statusFilter !== 'ALL' || routeFilter !== 'ALL'
+                          ? 'No buses match your filter criteria.'
+                          : 'No registered buses found in fleet.'}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        {searchTerm || statusFilter !== 'ALL' || routeFilter !== 'ALL'
+                          ? 'Try resetting the search bar or filter dropdowns.'
+                          : "Click 'Register Bus' to add your campus vehicle."}
+                      </p>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (
