@@ -62,6 +62,9 @@ const AppShell = () => {
               <span className="font-medium">Operating Mode</span>
               <span className="rounded bg-warning/15 px-1.5 py-0.5 font-semibold text-warning">DEMO</span>
             </div>
+            <div className="mt-1.5 text-[10px] text-muted-foreground/80 leading-tight">
+              LocalStorage + In-Memory Persistence. Supabase PostgreSQL Ready.
+            </div>
           </div>
         </aside>
         <div className="flex min-w-0 flex-1 flex-col">

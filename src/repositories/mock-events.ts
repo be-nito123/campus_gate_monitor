@@ -1,14 +1,42 @@
 import type { GateEvent } from '@/types/domain'
 import { createId, nowIso } from '@/utils/id'
 
-/** Demo seed events. Loaded only by the demo data context. */
 export const DEMO_EVENTS: GateEvent[] = []
+const STORAGE_KEY = 'gatevision_events_v1'
 
 export class GateEventRepository {
   private events: GateEvent[]
 
-  constructor(initial: GateEvent[] = []) {
-    this.events = [...initial]
+  constructor(initial: GateEvent[] = DEMO_EVENTS) {
+    this.events = this.loadFromStorage(initial)
+  }
+
+  private loadFromStorage(initial: GateEvent[]): GateEvent[] {
+    try {
+      if ((globalThis as { VITEST?: boolean }).VITEST) {
+        return [...initial]
+      }
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const stored = window.localStorage.getItem(STORAGE_KEY)
+        if (stored) {
+          return JSON.parse(stored)
+        }
+      }
+    } catch {
+      // fallback
+    }
+    return [...initial]
+  }
+
+  private saveToStorage(): void {
+    try {
+      if ((globalThis as { VITEST?: boolean }).VITEST) return
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.events))
+      }
+    } catch {
+      // fallback
+    }
   }
 
   async listAll(): Promise<GateEvent[]> {
@@ -39,6 +67,7 @@ export class GateEventRepository {
       createdAt: nowIso(),
     }
     this.events.push(newEvent)
+    this.saveToStorage()
     return newEvent
   }
 
@@ -46,6 +75,7 @@ export class GateEventRepository {
     const idx = this.events.findIndex((e) => e.id === id)
     if (idx < 0) return null
     this.events[idx] = { ...this.events[idx], ...updates }
+    this.saveToStorage()
     return this.events[idx]
   }
 
@@ -53,10 +83,12 @@ export class GateEventRepository {
     const idx = this.events.findIndex((e) => e.id === id)
     if (idx < 0) return false
     this.events.splice(idx, 1)
+    this.saveToStorage()
     return true
   }
 
   async _seed(event: GateEvent) {
     this.events.push(event)
+    this.saveToStorage()
   }
 }

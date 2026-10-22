@@ -2,10 +2,6 @@ import type { Bus } from '@/types/domain'
 import { createId, nowIso } from '@/utils/id'
 import { normalizeRegistrationNumber, toComparisonKey } from '@/utils/registration'
 
-/**
- * Demo seed fleet. Loaded only by the application's demo data context —
- * tests and future Supabase-backed stores start from an empty repository.
- */
 export const DEMO_BUSES: Bus[] = [
   {
     id: 'bus-001',
@@ -41,16 +37,45 @@ export const DEMO_BUSES: Bus[] = [
   },
 ]
 
+const STORAGE_KEY = 'gatevision_buses_v1'
+
 export class BusRepository {
   private buses: Bus[]
 
-  constructor(initial: Bus[] = []) {
-    this.buses = [...initial]
+  constructor(initial: Bus[] = DEMO_BUSES) {
+    this.buses = this.loadFromStorage(initial)
   }
 
-  /** Return all active buses sorted by display name */
+  private loadFromStorage(initial: Bus[]): Bus[] {
+    try {
+      if ((globalThis as { VITEST?: boolean }).VITEST) {
+        return [...initial]
+      }
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const stored = window.localStorage.getItem(STORAGE_KEY)
+        if (stored) {
+          return JSON.parse(stored)
+        }
+      }
+    } catch {
+      // fallback
+    }
+    return [...initial]
+  }
+
+  private saveToStorage(): void {
+    try {
+      if ((globalThis as { VITEST?: boolean }).VITEST) return
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.buses))
+      }
+    } catch {
+      // fallback
+    }
+  }
+
   async listAll(): Promise<Bus[]> {
-    return this.buses.filter((b) => b.isActive).sort((a, b) => a.displayName!.localeCompare(b.displayName!))
+    return this.buses.filter((b) => b.isActive).sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''))
   }
 
   async getById(id: string): Promise<Bus | null> {
@@ -71,13 +96,14 @@ export class BusRepository {
       const idx = this.buses.findIndex((b) => b.id === bus.id)
       if (idx >= 0) {
         this.buses[idx] = { ...this.buses[idx], ...bus, updatedAt: nowIso() }
+        this.saveToStorage()
         return this.buses[idx]
       }
     }
     const newBus: Bus = {
       id: bus.id ?? createId('bus'),
       busCode: bus.busCode ?? `B${(this.buses.length + 1).toString().padStart(3, '0')}`,
-      registrationNumber: bus.normalizedRegistrationNumber ?? 'UNASSIGNED',
+      registrationNumber: bus.registrationNumber ?? bus.normalizedRegistrationNumber ?? 'UNASSIGNED',
       normalizedRegistrationNumber:
         bus.normalizedRegistrationNumber ?? normalizeRegistrationNumber(bus.registrationNumber ?? ''),
       displayName: bus.displayName ?? null,
@@ -85,13 +111,14 @@ export class BusRepository {
       driverName: bus.driverName ?? null,
       driverContact: bus.driverContact ?? null,
       currentStatus: bus.currentStatus ?? 'INSIDE_CAMPUS',
-      registrationDate: nowIso(),
+      registrationDate: bus.registrationDate ?? nowIso(),
       isActive: bus.isActive ?? true,
       notes: bus.notes ?? null,
       createdAt: nowIso(),
       updatedAt: nowIso(),
     }
     this.buses.push(newBus)
+    this.saveToStorage()
     return newBus
   }
 
@@ -100,11 +127,12 @@ export class BusRepository {
     if (!bus) return false
     bus.isActive = false
     bus.updatedAt = nowIso()
+    this.saveToStorage()
     return true
   }
 
-  // Utility to seed a bus. Only for tests.
   async _seed(bus: Bus) {
     this.buses.push(bus)
+    this.saveToStorage()
   }
 }

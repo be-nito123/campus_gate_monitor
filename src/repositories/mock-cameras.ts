@@ -68,11 +68,41 @@ export const DEMO_CAMERAS: Camera[] = [
   },
 ]
 
+const STORAGE_KEY = 'gatevision_cameras_v1'
+
 export class CameraRepository {
   private cameras: Camera[]
 
   constructor(initial: Camera[] = DEMO_CAMERAS) {
-    this.cameras = [...initial]
+    this.cameras = this.loadFromStorage(initial)
+  }
+
+  private loadFromStorage(initial: Camera[]): Camera[] {
+    try {
+      if ((import.meta as { env?: { VITEST?: boolean } }).env?.VITEST) {
+        return [...initial]
+      }
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const stored = window.localStorage.getItem(STORAGE_KEY)
+        if (stored) {
+          return JSON.parse(stored)
+        }
+      }
+    } catch {
+      // fallback
+    }
+    return [...initial]
+  }
+
+  private saveToStorage(): void {
+    try {
+      if ((import.meta as { env?: { VITEST?: boolean } }).env?.VITEST) return
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.cameras))
+      }
+    } catch {
+      // fallback
+    }
   }
 
   async listAll(): Promise<Camera[]> {
@@ -88,6 +118,7 @@ export class CameraRepository {
       const idx = this.cameras.findIndex((c) => c.id === camera.id)
       if (idx >= 0) {
         this.cameras[idx] = { ...this.cameras[idx], ...camera, updatedAt: nowIso() }
+        this.saveToStorage()
         return this.cameras[idx]
       }
     }
@@ -108,6 +139,7 @@ export class CameraRepository {
       updatedAt: nowIso(),
     }
     this.cameras.push(newCamera)
+    this.saveToStorage()
     return newCamera
   }
 
@@ -115,6 +147,7 @@ export class CameraRepository {
     const idx = this.cameras.findIndex((c) => c.id === id)
     if (idx < 0) return false
     this.cameras.splice(idx, 1)
+    this.saveToStorage()
     return true
   }
 }
