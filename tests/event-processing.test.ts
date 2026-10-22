@@ -47,7 +47,7 @@ beforeEach(() => {
   service.duplicateCooldownSeconds = 0
 })
 
-describe('gate event processing', () => {
+describe('gate event processing engine', () => {
   it('records an EXIT and sets the bus to OUTSIDE_CAMPUS', async () => {
     const bus = makeBus()
     await busRepo.upsert(bus)
@@ -105,6 +105,30 @@ describe('gate event processing', () => {
 
     const events = await eventRepo.listAll()
     expect(events).toHaveLength(1)
+  })
+
+  it('supports injectable clock for deterministic duplicate suppression testing', async () => {
+    let mockTime = 1000000
+    const clock = () => mockTime
+    const svc = new EventProcessingService(busRepo, eventRepo, clock)
+    svc.duplicateCooldownSeconds = 60
+
+    const bus = makeBus()
+    await busRepo.upsert(bus)
+
+    const first = await svc.processGateDetection(makeDetection({ directionEstimate: 'OUTBOUND' }))
+    expect(first.outcome).toBe('EVENT_CREATED')
+
+    // Same time -> duplicate suppressed
+    const second = await svc.processGateDetection(makeDetection({ directionEstimate: 'OUTBOUND' }))
+    expect(second.outcome).toBe('DUPLICATE_SUPPRESSED')
+
+    // Advance time past cooldown
+    mockTime += 65000
+
+    // Now record ENTRY (valid state transition)
+    const entry = await svc.processGateDetection(makeDetection({ directionEstimate: 'INBOUND' }))
+    expect(entry.outcome).toBe('EVENT_CREATED')
   })
 
   it('routes unknown plates to review instead of creating a confirmed event', async () => {

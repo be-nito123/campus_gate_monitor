@@ -22,13 +22,19 @@ import { normalizeRegistrationNumber } from '@/utils/registration'
 export class EventProcessingService {
   private busRepo: BusRepository
   private eventRepo: GateEventRepository
+  private nowFn: () => number
 
   /** Duplicate suppression window, in seconds. */
   duplicateCooldownSeconds = 60
 
-  constructor(busRepo: BusRepository, eventRepo: GateEventRepository) {
+  constructor(
+    busRepo: BusRepository,
+    eventRepo: GateEventRepository,
+    nowFn: () => number = () => Date.now(),
+  ) {
     this.busRepo = busRepo
     this.eventRepo = eventRepo
+    this.nowFn = nowFn
   }
 
   async processGateDetection(detection: RawDetection): Promise<ProcessingResult> {
@@ -66,7 +72,7 @@ export class EventProcessingService {
     const last = await this.eventRepo.getLastForBus(bus.id)
     if (last && last.eventType === eventType) {
       const lastTime = new Date(last.createdAt).getTime()
-      const now = Date.now()
+      const now = this.nowFn()
       if (now - lastTime < this.duplicateCooldownSeconds * 1000) {
         return {
           outcome: 'DUPLICATE_SUPPRESSED',
